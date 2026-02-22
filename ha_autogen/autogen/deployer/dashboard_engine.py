@@ -1,4 +1,4 @@
-"""Dashboard deploy engine -- deploy Lovelace configs via HA Storage API."""
+"""Dashboard deploy engine -- deploy Lovelace configs via HA WebSocket API."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-import httpx
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,24 @@ def _get_output_dir() -> Path:
     output_dir = Path(__file__).resolve().parent.parent.parent.parent / "tests" / "output"
     output_dir.mkdir(exist_ok=True)
     return output_dir
+
+
+async def _ws_call(token: str, msg_type: str, **kwargs) -> dict:
+    """Open a short-lived WS connection and send a single command."""
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect("ws://supervisor/core/websocket") as ws:
+            auth_msg = await ws.receive_json()
+            if auth_msg.get("type") != "auth_required":
+                raise RuntimeError(f"Unexpected WS message: {auth_msg}")
+            await ws.send_json({"type": "auth", "access_token": token})
+            auth_resp = await ws.receive_json()
+            if auth_resp.get("type") != "auth_ok":
+                raise RuntimeError(f"WS auth failed: {auth_resp}")
+
+            payload = {"id": 1, "type": msg_type, **kwargs}
+            await ws.send_json(payload)
+            resp = await ws.receive_json()
+            return resp
 
 
 class DashboardDeployEngine:
@@ -37,13 +55,11 @@ class DashboardDeployEngine:
         if not token:
             raise RuntimeError("SUPERVISOR_TOKEN not set")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                "http://supervisor/core/api/lovelace/config",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+        resp = await _ws_call(token, "lovelace/config")
+        if not resp.get("success"):
+            logger.warning("Failed to get Lovelace config: %s", resp.get("error"))
+            return {}
+        return resp.get("result", {})
 
     async def deploy(self, config: dict, backup_enabled: bool = True) -> dict:
         """Deploy a Lovelace dashboard config.
@@ -79,19 +95,18 @@ class DashboardDeployEngine:
             )
             logger.info("Dashboard config written to %s", output_path)
         else:
-            # POST to HA Lovelace storage API
+            # Save via HA Lovelace WebSocket API
             token = os.environ.get("SUPERVISOR_TOKEN", "")
             if not token:
                 raise RuntimeError("SUPERVISOR_TOKEN not set")
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "http://supervisor/core/api/lovelace/config",
-                    headers={"Authorization": f"Bearer {token}"},
-                    json=config,
+            resp = await _ws_call(token, "lovelace/config/save", config=config)
+            if not resp.get("success"):
+                error = resp.get("error", {})
+                raise RuntimeError(
+                    f"Lovelace save failed: {error.get('message', resp)}"
                 )
-                resp.raise_for_status()
-                logger.info("Dashboard config deployed via Lovelace API")
+            logger.info("Dashboard config deployed via Lovelace WS API")
 
         views_count = len(config.get("views", []))
         return {
