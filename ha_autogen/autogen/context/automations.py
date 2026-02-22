@@ -19,13 +19,41 @@ _yaml.preserve_quotes = True
 async def fetch_automations(
     ws: aiohttp.ClientWebSocketResponse,
     msg_id: int,
-) -> list[dict[str, Any]]:
-    """Fetch automation configs via WS config/automation/config/list."""
-    await ws.send_json({"id": msg_id, "type": "config/automation/config/list"})
-    resp = await ws.receive_json()
-    if not resp.get("success"):
-        raise RuntimeError(f"Automation config fetch failed: {resp}")
-    return resp["result"]
+    automation_entity_ids: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch automation configs via WS automation/config for each entity.
+
+    HA doesn't have a bulk automation config command. We fetch each one
+    individually using the ``automation/config`` WS type.
+
+    Returns (configs, next_msg_id).
+    """
+    if not automation_entity_ids:
+        return [], msg_id
+
+    results: list[dict[str, Any]] = []
+    current_id = msg_id
+
+    for entity_id in automation_entity_ids:
+        await ws.send_json({
+            "id": current_id,
+            "type": "automation/config",
+            "entity_id": entity_id,
+        })
+        resp = await ws.receive_json()
+        if resp.get("success"):
+            config = resp["result"].get("config", {})
+            config["entity_id"] = entity_id
+            results.append(config)
+        else:
+            logger.debug(
+                "Could not fetch config for %s: %s",
+                entity_id,
+                resp.get("error"),
+            )
+        current_id += 1
+
+    return results, current_id
 
 
 def load_automations_from_fixture(fixture_path: Path) -> list[dict[str, Any]]:

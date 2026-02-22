@@ -153,9 +153,26 @@ class ContextEngine:
                 msg_id += 1
                 self._devices = await fetch_devices(ws, msg_id)
                 msg_id += 1
-                self._automations = await fetch_automations(ws, msg_id)
-                msg_id += 1
-                self._dashboards = await fetch_dashboards(ws, msg_id)
+
+                # Automation configs: fetch per-entity (non-fatal)
+                try:
+                    automation_ids = [
+                        e.entity_id for e in self._entities
+                        if e.entity_id.startswith("automation.")
+                    ]
+                    self._automations, msg_id = await fetch_automations(
+                        ws, msg_id, automation_ids
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to fetch automations: %s", exc)
+                    self._automations = []
+
+                # Dashboard config (non-fatal)
+                try:
+                    self._dashboards = await fetch_dashboards(ws, msg_id)
+                except Exception as exc:
+                    logger.warning("Failed to fetch dashboards: %s", exc)
+                    self._dashboards = {}
 
     def get_active_entities(self) -> list[EntityEntry]:
         """Return only entities that are not disabled or hidden."""
