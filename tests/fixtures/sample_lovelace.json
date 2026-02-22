@@ -1,0 +1,119 @@
+{
+  "views": [
+    {
+      "title": "Sala de Estar",
+      "path": "living-room",
+      "cards": [
+        {
+          "type": "entities",
+          "title": "Living Room Lights",
+          "entities": [
+            "light.living_room_main",
+            "light.living_room_lamp"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Living Room Sensors",
+          "entities": [
+            "sensor.living_room_temperature",
+            "sensor.living_room_humidity"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Media",
+          "entities": [
+            "media_player.living_room_tv"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Escritório",
+      "path": "office",
+      "cards": [
+        {
+          "type": "entities",
+          "title": "Office Devices",
+          "entities": [
+            "light.office_lights_l1",
+            "light.office_led_desk",
+            "switch.office_monitor",
+            "sensor.office_temperature"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Cozinha",
+      "path": "kitchen",
+      "cards": [
+        {
+          "type": "entities",
+          "title": "Kitchen Lights",
+          "entities": [
+            "light.kitchen_main",
+            "light.kitchen_counter"
+          ]
+        },
+        {
+          "type": "gauge",
+          "entity": "sensor.kitchen_temperature",
+          "name": "Kitchen Temp",
+          "min": 0,
+          "max": 50
+        },
+        {
+          "type": "entities",
+          "title": "Kitchen Sensors",
+          "entities": [
+            "sensor.kitchen_humidity"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "More Kitchen",
+          "entities": [
+            "switch.kitchen_coffee_maker"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Appliances",
+          "entities": [
+            "sensor.kitchen_power_usage"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Water",
+          "entities": [
+            "sensor.kitchen_water_leak"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Extras",
+          "entities": [
+            "binary_sensor.kitchen_motion"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "Status",
+          "entities": [
+            "binary_sensor.kitchen_window"
+          ]
+        },
+        {
+          "type": "entities",
+          "title": "More Status",
+          "entities": [
+            "sensor.kitchen_air_quality"
+          ]
+        }
+      ]
+    }
+  ]
+}

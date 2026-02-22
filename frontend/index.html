@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HA AutoGen</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/merge/merge.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/merge/merge.min.js"></script>
+    <style>
+        :root {
+            --bg: #1c1c1c;
+            --surface: #2d2d2d;
+            --surface-hover: #353535;
+            --text: #e0e0e0;
+            --text-muted: #888;
+            --accent: #03a9f4;
+            --accent-hover: #0288d1;
+            --border: #444;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --error: #f44336;
+            --critical: #e91e63;
+            --info: #2196f3;
+            --purple: #ce93d8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+        .tab-btn {
+            padding: 0.6rem 1.2rem; background: none; color: var(--text-muted); border: none;
+            border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer;
+            font-size: 0.95rem; font-weight: 500; transition: all 0.2s; white-space: nowrap;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Form / inputs */
+        .input-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        textarea, input[type="text"] {
+            width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px;
+            background: var(--surface); color: var(--text); font-size: 0.95rem; font-family: inherit;
+        }
+        textarea { min-height: 100px; resize: vertical; line-height: 1.5; }
+        textarea:focus, input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+        textarea::placeholder, input::placeholder { color: var(--text-muted); }
+
+        /* Mode toggle */
+        .mode-toggle { display: flex; gap: 0; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+        .mode-toggle label {
+            margin: 0; padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 500; cursor: pointer;
+            background: var(--surface); color: var(--text-muted); transition: all 0.2s; border-right: 1px solid var(--border);
+        }
+        .mode-toggle label:last-child { border-right: none; }
+        .mode-toggle input { display: none; }
+        .mode-toggle input:checked + label, .mode-toggle label.active-mode { background: var(--accent); color: white; }
+
+        /* Buttons */
+        .btn {
+            padding: 0.6rem 1.5rem; background: var(--accent); color: white; border: none;
+            border-radius: 6px; font-size: 0.95rem; cursor: pointer; transition: background 0.2s;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: #43a047; }
+        .btn-danger { background: var(--error); }
+        .btn-danger:hover { background: #d32f2f; }
+        .btn-sm { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
+        .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+        .btn-outline:hover { background: var(--accent); color: white; }
+        .btn-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+
+        /* Result panel */
+        .result { margin-top: 1.5rem; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+        .result-header {
+            background: var(--surface); padding: 0.5rem 0.75rem; font-size: 0.85rem;
+            display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);
+        }
+        .result-header-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .copy-btn {
+            padding: 0.25rem 0.5rem; background: transparent; color: var(--accent);
+            border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s;
+        }
+        .copy-btn:hover { background: var(--accent); color: white; }
+
+        /* Spinner */
+        .spinner { display: none; padding: 1.5rem; text-align: center; color: var(--accent); }
+        .spinner::after {
+            content: ""; display: inline-block; width: 1.2rem; height: 1.2rem;
+            border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .htmx-request .spinner { display: block; }
+        .htmx-request .btn[type="submit"] { display: none; }
+
+        /* Messages */
+        .error-msg { color: var(--error); padding: 1rem; background: rgba(244,67,54,0.1); border-radius: 6px; margin-top: 1rem; }
+        .success-msg { color: var(--success); padding: 1rem; background: rgba(76,175,80,0.1); border-radius: 6px; margin-top: 1rem; }
+        .meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; }
+
+        /* CodeMirror */
+        .CodeMirror { height: auto; min-height: 80px; font-size: 0.85rem; line-height: 1.6; border: none; }
+        .cm-s-material-darker.CodeMirror { background: #1a1a2e; }
+
+        /* Validation badges */
+        .validation { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; }
+        .badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: 500; }
+        .badge-success { background: rgba(76,175,80,0.15); color: var(--success); }
+        .badge-warning { background: rgba(255,152,0,0.15); color: var(--warning); }
+        .badge-error { background: rgba(244,67,54,0.15); color: var(--error); }
+        .badge-info { background: rgba(3,169,244,0.15); color: var(--accent); }
+        .badge-critical { background: rgba(233,30,99,0.15); color: var(--critical); }
+        .badge-suggestion { background: rgba(156,39,176,0.15); color: var(--purple); }
+        .issue-item { padding: 0.4rem 0.6rem; background: var(--surface); border-radius: 4px; font-size: 0.8rem; line-height: 1.4; }
+        .issue-item .suggestion { color: var(--accent); font-style: italic; }
+
+        /* History */
+        .history-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .history-item {
+            padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; cursor: pointer; transition: background 0.2s; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        .history-item:hover { background: var(--surface-hover); }
+        .history-item-left { flex: 1; min-width: 0; }
+        .history-request { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .history-item-right { display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
+        .status-badge { padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
+        .status-valid { background: rgba(76,175,80,0.15); color: var(--success); }
+        .status-invalid { background: rgba(244,67,54,0.15); color: var(--error); }
+        .status-deployed { background: rgba(3,169,244,0.15); color: var(--accent); }
+        .status-rolled_back { background: rgba(255,152,0,0.15); color: var(--warning); }
+        .status-draft { background: rgba(136,136,136,0.15); color: var(--text-muted); }
+        .type-badge { padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.65rem; text-transform: uppercase; font-weight: 600; background: rgba(3,169,244,0.1); color: var(--accent); letter-spacing: 0.03em; }
+        .type-badge.type-dashboard { background: rgba(156,39,176,0.15); color: var(--purple); }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
+        .pagination { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+
+        /* Review */
+        .review-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; gap: 0.75rem; flex-wrap: wrap; }
+        .review-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .review-scope-select {
+            padding: 0.5rem 0.75rem; background: var(--surface); color: var(--text);
+            border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; cursor: pointer;
+        }
+        .review-summary { padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .findings-group { margin-bottom: 1.5rem; }
+        .findings-group-title { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .finding-card { padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.5rem; }
+        .finding-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.4rem; }
+        .finding-title { font-weight: 600; font-size: 0.9rem; }
+        .finding-automation { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+        .finding-desc { font-size: 0.85rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+        .finding-fix { margin-top: 0.5rem; padding: 0.5rem; background: #1a1a2e; border-radius: 4px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; color: var(--success); }
+
+        /* Loading overlay */
+        .loading-overlay { display: none; padding: 2rem; text-align: center; color: var(--accent); }
+        .loading-overlay.active { display: block; }
+        .loading-spinner { display: inline-block; width: 1.5rem; height: 1.5rem; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 0.5rem; vertical-align: middle; }
+
+        /* Settings */
+        .template-card {
+            padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;
+        }
+        .template-card-info { flex: 1; min-width: 0; }
+        .template-card-name { font-weight: 600; font-size: 0.9rem; }
+        .template-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .template-card-actions { display: flex; gap: 0.4rem; align-items: center; flex-shrink: 0; }
+        .toggle-btn {
+            width: 36px; height: 20px; border-radius: 10px; border: none; cursor: pointer;
+            position: relative; transition: background 0.2s;
+        }
+        .toggle-btn.on { background: var(--success); }
+        .toggle-btn.off { background: var(--border); }
+        .toggle-btn::after {
+            content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+            background: white; top: 2px; transition: left 0.2s;
+        }
+        .toggle-btn.on::after { left: 18px; }
+        .toggle-btn.off::after { left: 2px; }
+        .template-form { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+        .template-form .input-group { margin-bottom: 0.75rem; }
+        .template-form label { font-size: 0.85rem; margin-bottom: 0.3rem; }
+        .template-form input, .template-form select, .template-form textarea {
+            width: 100%; padding: 0.5rem; background: var(--bg); color: var(--text);
+            border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; font-family: inherit;
+        }
+        .template-form textarea { min-height: 80px; }
+        .radio-group { display: flex; gap: 1rem; margin-top: 0.3rem; }
+        .radio-group label { display: flex; align-items: center; gap: 0.3rem; font-weight: 400; font-size: 0.85rem; }
+        .radio-group input[type="radio"] { display: inline; width: auto; }
+
+        /* Explore */
+        .coverage-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+        .coverage-bar-label { font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .coverage-bar-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+        .coverage-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s; }
+        .area-highlight {
+            padding: 0.6rem 0.75rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center;
+        }
+        .area-highlight-left { flex: 1; }
+        .area-highlight-name { font-weight: 600; font-size: 0.85rem; }
+        .area-highlight-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; }
+        .suggestion-card {
+            padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; margin-bottom: 0.5rem;
+        }
+        .suggestion-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.3rem; }
+        .suggestion-title { font-weight: 600; font-size: 0.9rem; }
+        .suggestion-badges { display: flex; gap: 0.3rem; flex-shrink: 0; }
+        .suggestion-desc { font-size: 0.85rem; color: var(--text); line-height: 1.4; margin-bottom: 0.4rem; }
+        .suggestion-entities { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .complexity-simple { background: rgba(76,175,80,0.15); color: var(--success); }
+        .complexity-moderate { background: rgba(255,152,0,0.15); color: var(--warning); }
+        .complexity-advanced { background: rgba(233,30,99,0.15); color: var(--critical); }
+        .category-badge { background: rgba(3,169,244,0.1); color: var(--accent); }
+        .section-title { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HA AutoGen</h1>
+        <p class="subtitle">Natural language automation & dashboard generator for Home Assistant</p>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="generate">Generate</button>
+            <button class="tab-btn" data-tab="history">History</button>
+            <button class="tab-btn" data-tab="review">Review</button>
+            <button class="tab-btn" data-tab="explore">Explore</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
+        </div>
+
+        <!-- Generate Tab -->
+        <div id="tab-generate" class="tab-content active">
+            <form id="gen-form" hx-ext="json-enc">
+                <div class="mode-toggle">
+                    <input type="radio" name="gen-mode" id="mode-automation" value="automation" checked>
+                    <label for="mode-automation" class="active-mode" onclick="setGenMode('automation')">Automation</label>
+                    <input type="radio" name="gen-mode" id="mode-dashboard" value="dashboard">
+                    <label for="mode-dashboard" onclick="setGenMode('dashboard')">Dashboard</label>
+                </div>
+                <div class="input-group">
+                    <label for="request" id="request-label">Describe the automation you want:</label>
+                    <textarea id="request" name="request" placeholder="e.g., Turn on the living room lights when motion is detected after sunset" required minlength="5"></textarea>
+                </div>
+                <button type="submit" class="btn" id="generate-btn" hx-post="__INGRESS_PATH__/api/generate" hx-target="#output" hx-indicator="#gen-form">Generate Automation</button>
+                <div class="spinner" id="gen-spinner">Generating... this may take a moment.</div>
+            </form>
+            <div id="output"></div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="tab-history" class="tab-content">
+            <div id="history-container"><div class="empty-state">Loading history...</div></div>
+        </div>
+
+        <!-- Review Tab -->
+        <div id="tab-review" class="tab-content">
+            <div class="review-header">
+                <span>Analyze your existing configurations for issues and best practices.</span>
+                <div class="review-controls">
+                    <select id="review-target" class="review-scope-select" onchange="onReviewTargetChange()">
+                        <option value="automations">Automations</option>
+                        <option value="dashboards">Dashboards</option>
+                        <option value="all">Full Review</option>
+                    </select>
+                    <select id="review-scope" class="review-scope-select" onchange="onReviewScopeChange()">
+                        <option value="all">All</option>
+                        <option value="area">By Area</option>
+                        <option value="single">Single Item</option>
+                    </select>
+                    <select id="review-area" class="review-scope-select" style="display:none">
+                        <option value="">Select area...</option>
+                    </select>
+                    <select id="review-item" class="review-scope-select" style="display:none">
+                        <option value="">Select item...</option>
+                    </select>
+                    <button class="btn" onclick="runReview()" id="review-btn">Run Review</button>
+                </div>
+            </div>
+            <div id="review-loading" class="loading-overlay"><span class="loading-spinner"></span> Analyzing configurations... this may take a moment.</div>
+            <div id="review-results"></div>
+        </div>
+
+        <!-- Explore Tab -->
+        <div id="tab-explore" class="tab-content">
+            <p style="margin-bottom:1rem; color:var(--text-muted)">Discover what you can automate with your current Home Assistant setup.</p>
+            <div class="review-controls" style="margin-bottom:1rem">
+                <select id="explore-area" class="review-scope-select">
+                    <option value="">All areas</option>
+                </select>
+                <select id="explore-domain" class="review-scope-select">
+                    <option value="">All domains</option>
+                    <option value="light">light</option>
+                    <option value="switch">switch</option>
+                    <option value="sensor">sensor</option>
+                    <option value="binary_sensor">binary_sensor</option>
+                    <option value="climate">climate</option>
+                    <option value="cover">cover</option>
+                    <option value="lock">lock</option>
+                    <option value="media_player">media_player</option>
+                    <option value="camera">camera</option>
+                </select>
+                <button class="btn" onclick="runExplore()" id="explore-btn">Explore</button>
+            </div>
+            <div id="explore-loading" class="loading-overlay"><span class="loading-spinner"></span> Analyzing your setup...</div>
+            <div id="explore-results"></div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tab-settings" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+                <div>
+                    <div class="section-title" style="margin:0">Prompt Templates</div>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem">Customize the LLM prompts with your own instructions.</p>
+                </div>
+                <button class="btn btn-sm" onclick="showTemplateForm()">New Template</button>
+            </div>
+            <div id="template-form-container"></div>
+            <div id="templates-list"><div class="empty-state">Loading...</div></div>
+        </div>
+    </div>
+
+    <script>
+        var cmEditor = null;
+        var currentGenerationId = null;
+        var currentGenMode = "automation";
+        var ingressPath = "__INGRESS_PATH__";
+        var cachedAreas = null;
+        var cachedAutomations = null;
+        var cachedViews = null;
+
+        // -- Tab navigation --
+        document.querySelectorAll(".tab-btn").forEach(function(btn) {
+            btn.addEventListener("click", function() {
+                var tabName = this.getAttribute("data-tab");
+                document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+                document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
+                document.getElementById("tab-" + tabName).classList.add("active");
+                this.classList.add("active");
+                if (tabName === "history") loadHistory();
+                if (tabName === "settings") loadTemplates();
+                if (tabName === "review" || tabName === "explore") loadContextData();
+            });
+        });
+
+        function switchTab(tabName) {
+            var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+            if (btn) btn.click();
+        }
+
+        // -- Mode toggle --
+        function setGenMode(mode) {
+            currentGenMode = mode;
+            var labels = document.querySelectorAll(".mode-toggle label");
+            labels.forEach(function(l) { l.classList.remove("active-mode"); });
+            if (mode === "dashboard") {
+                document.getElementById("mode-dashboard").checked = true;
+                document.querySelector("label[for='mode-dashboard']").classList.add("active-mode");
+                document.getElementById("request-label").textContent = "Describe the dashboard you want:";
+                document.getElementById("request").placeholder = "e.g., Create a dashboard for all rooms with temperature sensors and lights";
+                document.getElementById("generate-btn").textContent = "Generate Dashboard";
+            } else {
+                document.getElementById("mode-automation").checked = true;
+                document.querySelector("label[for='mode-automation']").classList.add("active-mode");
+                document.getElementById("request-label").textContent = "Describe the automation you want:";
+                document.getElementById("request").placeholder = "e.g., Turn on the living room lights when motion is detected after sunset";
+                document.getElementById("generate-btn").textContent = "Generate Automation";
+            }
+        }
+
+        // -- Generate tab: htmx intercept --
+        document.body.addEventListener("htmx:configRequest", function(evt) {
+            if (evt.detail.path && evt.detail.path.indexOf("/api/generate") !== -1) {
+                if (evt.detail.parameters) evt.detail.parameters.mode = currentGenMode;
+            }
+        });
+
+        document.body.addEventListener("htmx:beforeSwap", function(evt) {
+            if (cmEditor) { cmEditor.toTextArea(); cmEditor = null; }
+            if (evt.detail.xhr.status >= 400) {
+                var errText;
+                try { errText = JSON.parse(evt.detail.xhr.responseText).detail || "Unknown error"; }
+                catch(e) { errText = evt.detail.xhr.responseText || "Unknown error"; }
+                evt.detail.serverResponse = '<div class="error-msg">Error: ' + escapeHtml(errText) + '</div>';
+                evt.detail.shouldSwap = true;
+                return;
+            }
+            try { var data = JSON.parse(evt.detail.xhr.responseText); }
+            catch(e) { evt.detail.serverResponse = '<div class="error-msg">Failed to parse response</div>'; evt.detail.shouldSwap = true; return; }
+
+            currentGenerationId = data.generation_id || "";
+            var mode = data.mode || "automation";
+            var yaml = data.yaml_output || "";
+            var validation = data.validation;
+            var modeLabel = mode === "dashboard" ? "Dashboard" : "Automation";
+            var metaParts = ["Mode: " + modeLabel, "Model: " + escapeHtml(data.model || "unknown"), "Tokens: " + ((data.prompt_tokens||0) + (data.completion_tokens||0))];
+            if (data.retries > 0) metaParts.push("Retries: " + data.retries);
+
+            var deployBtnHtml = "";
+            if (validation && validation.valid) {
+                var fn = mode === "dashboard" ? "deployDashboard()" : "deployAutomation()";
+                var label = mode === "dashboard" ? "Deploy Dashboard" : "Deploy to HA";
+                deployBtnHtml = '<div class="btn-row"><button class="btn btn-success btn-sm" onclick="' + fn + '" id="deploy-btn">' + label + '</button><span id="deploy-status"></span></div>';
+            }
+
+            evt.detail.serverResponse =
+                '<div class="result"><div class="result-header"><span>Generated ' + modeLabel + '</span>' +
+                '<div class="result-header-actions"><button class="copy-btn" onclick="copyYaml()">Copy YAML</button></div></div>' +
+                '<textarea id="yaml-editor">' + escapeHtml(yaml) + '</textarea></div>' +
+                deployBtnHtml + buildValidationHtml(validation, data.retries) +
+                '<div class="meta">' + metaParts.join(" | ") + '</div>';
+        });
+
+        document.body.addEventListener("htmx:afterSwap", function(evt) {
+            var ta = document.getElementById("yaml-editor");
+            if (!ta) return;
+            cmEditor = CodeMirror.fromTextArea(ta, { mode: "yaml", theme: "material-darker", lineNumbers: true, readOnly: false, lineWrapping: true, viewportMargin: Infinity });
+        });
+
+        // -- Deploy --
+        function deployAutomation() { doDeploy("/api/deploy", "Deploy to HA"); }
+        function deployDashboard() { doDeploy("/api/deploy-dashboard", "Deploy Dashboard"); }
+
+        function doDeploy(endpoint, label) {
+            var btn = document.getElementById("deploy-btn");
+            var status = document.getElementById("deploy-status");
+            if (!btn || !cmEditor) return;
+            var yaml = cmEditor.getValue();
+            if (!yaml.trim()) return;
+            btn.disabled = true; btn.textContent = "Deploying..."; status.innerHTML = "";
+            fetch(ingressPath + endpoint, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ yaml_content: yaml, generation_id: currentGenerationId || null })
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                if (res.ok && res.data.success) {
+                    btn.textContent = "Deployed"; btn.style.opacity = "0.7";
+                    status.innerHTML = '<span class="success-msg" style="padding:0.3rem 0.6rem;margin:0">' + escapeHtml(res.data.message) + '</span>';
+                } else {
+                    btn.textContent = label; btn.disabled = false;
+                    status.innerHTML = '<span class="error-msg" style="padding:0.3rem 0.6rem;margin:0">' + escapeHtml(res.data.detail || "Deploy failed") + '</span>';
+                }
+            })
+            .catch(function() {
+                btn.textContent = label; btn.disabled = false;
+                status.innerHTML = '<span class="error-msg" style="padding:0.3rem 0.6rem;margin:0">Network error</span>';
+            });
+        }
+
+        // -- History --
+        function loadHistory(offset) {
+            offset = offset || 0;
+            var c = document.getElementById("history-container");
+            c.innerHTML = '<div class="empty-state">Loading...</div>';
+            fetch(ingressPath + "/api/history?limit=20&offset=" + offset)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.items || data.items.length === 0) { c.innerHTML = '<div class="empty-state">No generations yet.</div>'; return; }
+                var html = '<div class="history-list">';
+                for (var i = 0; i < data.items.length; i++) {
+                    var item = data.items[i];
+                    var t = item.type || "automation";
+                    html += '<div class="history-item" onclick="loadGeneration(\'' + escapeHtml(item.id) + '\')">' +
+                        '<div class="history-item-left"><div class="history-request">' + escapeHtml(item.request) + '</div>' +
+                        '<div class="history-meta">' + escapeHtml(item.model||"") + ' | ' + escapeHtml(item.created_at||"") + '</div></div>' +
+                        '<div class="history-item-right"><span class="type-badge' + (t==="dashboard" ? " type-dashboard" : "") + '">' + escapeHtml(t) + '</span>' +
+                        '<span class="status-badge status-' + (item.status||"draft") + '">' + escapeHtml(item.status||"draft") + '</span></div></div>';
+                }
+                html += '</div>';
+                if (data.total > 20) {
+                    html += '<div class="pagination">';
+                    if (offset > 0) html += '<button class="btn btn-sm" onclick="loadHistory(' + Math.max(0,offset-20) + ')">Previous</button>';
+                    if (offset+20 < data.total) html += '<button class="btn btn-sm" onclick="loadHistory(' + (offset+20) + ')">Next</button>';
+                    html += '</div>';
+                }
+                c.innerHTML = html;
+            })
+            .catch(function(e) { c.innerHTML = '<div class="error-msg">Failed to load history</div>'; });
+        }
+
+        function loadGeneration(id) {
+            fetch(ingressPath + "/api/history/" + id).then(function(r) { return r.json(); })
+            .then(function(data) {
+                var t = data.type || "automation";
+                setGenMode(t); switchTab("generate");
+                document.getElementById("request").value = data.request || "";
+                currentGenerationId = data.id;
+                var out = document.getElementById("output");
+                if (cmEditor) { cmEditor.toTextArea(); cmEditor = null; }
+                var ml = t === "dashboard" ? "Dashboard" : "Automation";
+                var fn = t === "dashboard" ? "deployDashboard()" : "deployAutomation()";
+                var dl = t === "dashboard" ? "Deploy Dashboard" : "Deploy to HA";
+                out.innerHTML = '<div class="result"><div class="result-header"><span>' + ml + ': ' + escapeHtml(data.id.substring(0,8)) + '...</span>' +
+                    '<div class="result-header-actions"><button class="copy-btn" onclick="copyYaml()">Copy YAML</button></div></div>' +
+                    '<textarea id="yaml-editor">' + escapeHtml(data.yaml_output||"") + '</textarea></div>' +
+                    '<div class="btn-row"><button class="btn btn-success btn-sm" onclick="' + fn + '" id="deploy-btn">' + dl + '</button><span id="deploy-status"></span></div>' +
+                    '<div class="meta">Mode: ' + ml + ' | Model: ' + escapeHtml(data.model||"") + ' | Status: ' + escapeHtml(data.status||"") + '</div>';
+                var ta = document.getElementById("yaml-editor");
+                if (ta) cmEditor = CodeMirror.fromTextArea(ta, { mode: "yaml", theme: "material-darker", lineNumbers: true, readOnly: false, lineWrapping: true, viewportMargin: Infinity });
+            });
+        }
+
+        // -- Context data loading (for dropdowns) --
+        function loadContextData() {
+            if (!cachedAreas) {
+                fetch(ingressPath + "/api/context/areas").then(function(r){return r.json();}).then(function(data) {
+                    cachedAreas = data;
+                    populateAreaDropdowns(data);
+                }).catch(function(){});
+            }
+            if (!cachedAutomations) {
+                fetch(ingressPath + "/api/context/automations").then(function(r){return r.json();}).then(function(data) {
+                    cachedAutomations = data;
+                }).catch(function(){});
+            }
+            if (!cachedViews) {
+                fetch(ingressPath + "/api/context/views").then(function(r){return r.json();}).then(function(data) {
+                    cachedViews = data;
+                }).catch(function(){});
+            }
+        }
+
+        function populateAreaDropdowns(areas) {
+            var selects = [document.getElementById("review-area"), document.getElementById("explore-area")];
+            selects.forEach(function(sel) {
+                if (!sel) return;
+                var val = sel.value;
+                sel.innerHTML = '<option value="">All areas</option>';
+                areas.forEach(function(a) { sel.innerHTML += '<option value="' + escapeHtml(a.area_id) + '">' + escapeHtml(a.name) + '</option>'; });
+                sel.value = val;
+            });
+        }
+
+        // -- Review tab --
+        function onReviewTargetChange() { onReviewScopeChange(); }
+        function onReviewScopeChange() {
+            var scope = document.getElementById("review-scope").value;
+            var target = document.getElementById("review-target").value;
+            var areaSelect = document.getElementById("review-area");
+            var itemSelect = document.getElementById("review-item");
+            areaSelect.style.display = "none";
+            itemSelect.style.display = "none";
+
+            if (scope === "area") {
+                areaSelect.style.display = "";
+            } else if (scope === "single") {
+                itemSelect.style.display = "";
+                itemSelect.innerHTML = '<option value="">Select item...</option>';
+                if (target === "automations" && cachedAutomations) {
+                    cachedAutomations.forEach(function(a) {
+                        itemSelect.innerHTML += '<option value="' + escapeHtml(a.id) + '">' + escapeHtml(a.alias) + '</option>';
+                    });
+                } else if (target === "dashboards" && cachedViews) {
+                    cachedViews.forEach(function(v) {
+                        itemSelect.innerHTML += '<option value="' + escapeHtml(v.path) + '">' + escapeHtml(v.title) + '</option>';
+                    });
+                }
+            }
+        }
+
+        function runReview() {
+            var btn = document.getElementById("review-btn");
+            var loading = document.getElementById("review-loading");
+            var results = document.getElementById("review-results");
+            var target = document.getElementById("review-target").value;
+            var scope = document.getElementById("review-scope").value;
+
+            var body = { target: target, scope: scope };
+            if (scope === "area") body.area_id = document.getElementById("review-area").value;
+            if (scope === "single") {
+                var itemVal = document.getElementById("review-item").value;
+                if (target === "automations") body.automation_id = itemVal;
+                else if (target === "dashboards") body.dashboard_view_path = itemVal;
+            }
+
+            btn.disabled = true; loading.classList.add("active"); results.innerHTML = "";
+            fetch(ingressPath + "/api/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                loading.classList.remove("active"); btn.disabled = false;
+                if (!res.ok) { results.innerHTML = '<div class="error-msg">' + escapeHtml(res.data.detail || "Review failed") + '</div>'; return; }
+                renderReviewResults(res.data);
+            })
+            .catch(function(e) { loading.classList.remove("active"); btn.disabled = false; results.innerHTML = '<div class="error-msg">Network error</div>'; });
+        }
+
+        function renderReviewResults(data) {
+            var results = document.getElementById("review-results");
+            var html = '<div class="review-summary">' + escapeHtml(data.summary || "No summary") + '</div>';
+            if (!data.findings || data.findings.length === 0) { html += '<div class="empty-state">No issues found!</div>'; results.innerHTML = html; return; }
+
+            var groups = { critical: [], warning: [], suggestion: [], info: [] };
+            data.findings.forEach(function(f) { var s = f.severity || "info"; (groups[s] || groups.info).push(f); });
+
+            var sevConfig = { critical: { label: "Critical", cls: "badge-critical", icon: "!!" }, warning: { label: "Warnings", cls: "badge-warning", icon: "!" }, suggestion: { label: "Suggestions", cls: "badge-suggestion", icon: "?" }, info: { label: "Info", cls: "badge-info", icon: "i" } };
+            ["critical","warning","suggestion","info"].forEach(function(sev) {
+                if (groups[sev].length === 0) return;
+                var c = sevConfig[sev];
+                html += '<div class="findings-group"><div class="findings-group-title"><span class="badge ' + c.cls + '">' + c.icon + '</span> ' + c.label + ' (' + groups[sev].length + ')</div>';
+                groups[sev].forEach(function(f) {
+                    html += '<div class="finding-card"><div class="finding-card-header"><span class="finding-title">' + escapeHtml(f.title) + '</span><span class="badge badge-info" style="font-size:0.65rem">' + escapeHtml(f.category) + '</span></div>';
+                    if (f.automation_alias || f.automation_id) html += '<div class="finding-automation">Automation: ' + escapeHtml(f.automation_alias || f.automation_id) + '</div>';
+                    html += '<div class="finding-desc">' + escapeHtml(f.description) + '</div>';
+                    if (f.suggested_yaml) html += '<div class="finding-fix">' + escapeHtml(f.suggested_yaml) + '</div>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            });
+
+            var meta = [];
+            if (data.model) meta.push("Model: " + escapeHtml(data.model));
+            if (data.automations_reviewed) meta.push("Automations: " + data.automations_reviewed);
+            if (data.dashboards_reviewed) meta.push("Dashboards: " + data.dashboards_reviewed);
+            if (meta.length) html += '<div class="meta">' + meta.join(" | ") + '</div>';
+            results.innerHTML = html;
+        }
+
+        // -- Explore tab --
+        function runExplore() {
+            var btn = document.getElementById("explore-btn");
+            var loading = document.getElementById("explore-loading");
+            var results = document.getElementById("explore-results");
+            var area = document.getElementById("explore-area").value;
+            var domain = document.getElementById("explore-domain").value;
+
+            btn.disabled = true; loading.classList.add("active"); results.innerHTML = "";
+            fetch(ingressPath + "/api/explore", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ focus_area: area || null, focus_domain: domain || null })
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(res) {
+                loading.classList.remove("active"); btn.disabled = false;
+                if (!res.ok) { results.innerHTML = '<div class="error-msg">' + escapeHtml(res.data.detail || "Explore failed") + '</div>'; return; }
+                renderExploreResults(res.data);
+            })
+            .catch(function(e) { loading.classList.remove("active"); btn.disabled = false; results.innerHTML = '<div class="error-msg">Network error</div>'; });
+        }
+
+        function renderExploreResults(data) {
+            var results = document.getElementById("explore-results");
+            var html = '';
+
+            // Coverage bar
+            var pct = Math.round(data.coverage_percent || 0);
+            html += '<div class="coverage-bar"><div class="coverage-bar-label">' + pct + '% of entities automated (' + (data.total_entities||0) + ' entities, ' + (data.total_areas||0) + ' areas, ' + (data.total_automations||0) + ' automations)</div>' +
+                '<div class="coverage-bar-track"><div class="coverage-bar-fill" style="width:' + pct + '%"></div></div></div>';
+
+            // Area highlights
+            if (data.area_highlights && data.area_highlights.length > 0) {
+                html += '<div class="section-title">Areas with Most Potential</div>';
+                data.area_highlights.slice(0, 5).forEach(function(a) {
+                    var apct = Math.round(a.coverage_percent || 0);
+                    html += '<div class="area-highlight"><div class="area-highlight-left"><div class="area-highlight-name">' + escapeHtml(a.area_name) + '</div>' +
+                        '<div class="area-highlight-meta">' + a.total_entities + ' entities, ' + apct + '% coverage, ' + a.potential_patterns + ' patterns</div></div>' +
+                        '<span class="badge badge-info">' + a.potential_patterns + ' ideas</span></div>';
+                });
+            }
+
+            // Suggestions
+            if (data.suggestions && data.suggestions.length > 0) {
+                html += '<div class="section-title">Suggested Automations</div>';
+                data.suggestions.forEach(function(s) {
+                    var compClass = "complexity-" + (s.complexity || "simple");
+                    html += '<div class="suggestion-card"><div class="suggestion-card-header"><span class="suggestion-title">' + escapeHtml(s.title) + '</span>' +
+                        '<div class="suggestion-badges"><span class="badge ' + compClass + '">' + escapeHtml(s.complexity||"simple") + '</span>' +
+                        '<span class="badge category-badge">' + escapeHtml(s.category||"") + '</span></div></div>' +
+                        '<div class="suggestion-desc">' + escapeHtml(s.description) + '</div>';
+                    if (s.entities_involved && s.entities_involved.length > 0) {
+                        html += '<div class="suggestion-entities">Entities: ' + s.entities_involved.map(function(e){return '<code>' + escapeHtml(e) + '</code>';}).join(', ') + '</div>';
+                    }
+                    if (s.area) html += '<div class="suggestion-entities">Area: ' + escapeHtml(s.area) + '</div>';
+                    html += '<button class="btn btn-outline btn-sm" style="margin-top:0.5rem" onclick="generateFromSuggestion(\'' + escapeHtml(s.title.replace(/'/g,"\\'")) + '\')">Generate This</button>';
+                    html += '</div>';
+                });
+            }
+
+            if (data.model) html += '<div class="meta">Model: ' + escapeHtml(data.model) + '</div>';
+            results.innerHTML = html;
+        }
+
+        function generateFromSuggestion(title) {
+            setGenMode("automation");
+            switchTab("generate");
+            document.getElementById("request").value = title;
+            document.getElementById("request").focus();
+        }
+
+        // -- Settings tab --
+        function loadTemplates() {
+            var list = document.getElementById("templates-list");
+            fetch(ingressPath + "/api/templates").then(function(r){return r.json();})
+            .then(function(data) {
+                if (!data || data.length === 0) { list.innerHTML = '<div class="empty-state">No templates yet. Create one to customize your prompts.</div>'; return; }
+                var html = '';
+                data.forEach(function(t) {
+                    var toggleClass = t.enabled ? "on" : "off";
+                    html += '<div class="template-card"><div class="template-card-info">' +
+                        '<div class="template-card-name">' + escapeHtml(t.name) + '</div>' +
+                        '<div class="template-card-meta"><span class="badge badge-info">' + escapeHtml(t.target) + '</span>' +
+                        '<span class="badge badge-suggestion">' + escapeHtml(t.position) + '</span>' +
+                        '<span>' + escapeHtml(t.content.substring(0,60)) + (t.content.length>60?'...':'') + '</span></div></div>' +
+                        '<div class="template-card-actions">' +
+                        '<button class="toggle-btn ' + toggleClass + '" onclick="toggleTemplate(\'' + t.id + '\',' + !t.enabled + ')"></button>' +
+                        '<button class="btn btn-sm btn-outline" onclick="editTemplate(\'' + t.id + '\')">Edit</button>' +
+                        '<button class="btn btn-sm btn-danger" onclick="deleteTemplate(\'' + t.id + '\')">Del</button>' +
+                        '</div></div>';
+                });
+                list.innerHTML = html;
+            })
+            .catch(function() { list.innerHTML = '<div class="error-msg">Failed to load templates</div>'; });
+        }
+
+        function showTemplateForm(template) {
+            var fc = document.getElementById("template-form-container");
+            var t = template || { id: "", name: "", content: "", target: "system", position: "append", enabled: true };
+            var isEdit = !!t.id;
+            fc.innerHTML = '<div class="template-form">' +
+                '<div class="input-group"><label>Name</label><input type="text" id="tpl-name" value="' + escapeHtml(t.name) + '" placeholder="e.g., Always use mode: queued"></div>' +
+                '<div class="input-group"><label>Target</label><select id="tpl-target">' +
+                '<option value="system"' + (t.target==="system"?" selected":"") + '>System (all prompts)</option>' +
+                '<option value="automation"' + (t.target==="automation"?" selected":"") + '>Automation generation</option>' +
+                '<option value="dashboard"' + (t.target==="dashboard"?" selected":"") + '>Dashboard generation</option>' +
+                '<option value="review"' + (t.target==="review"?" selected":"") + '>Review analysis</option>' +
+                '</select></div>' +
+                '<div class="input-group"><label>Position</label><div class="radio-group">' +
+                '<label><input type="radio" name="tpl-pos" value="prepend"' + (t.position==="prepend"?" checked":"") + '> Prepend</label>' +
+                '<label><input type="radio" name="tpl-pos" value="append"' + (t.position==="append"?" checked":"") + '> Append</label>' +
+                '</div></div>' +
+                '<div class="input-group"><label>Content</label><textarea id="tpl-content" placeholder="Your custom instructions...">' + escapeHtml(t.content) + '</textarea></div>' +
+                '<div class="btn-row">' +
+                '<button class="btn btn-sm" onclick="saveTemplate(\'' + (t.id||"") + '\')">' + (isEdit ? "Update" : "Create") + '</button>' +
+                '<button class="btn btn-sm btn-outline" onclick="hideTemplateForm()">Cancel</button>' +
+                '</div></div>';
+        }
+
+        function hideTemplateForm() { document.getElementById("template-form-container").innerHTML = ""; }
+
+        function saveTemplate(id) {
+            var name = document.getElementById("tpl-name").value;
+            var target = document.getElementById("tpl-target").value;
+            var position = document.querySelector('input[name="tpl-pos"]:checked').value;
+            var content = document.getElementById("tpl-content").value;
+            if (!name || !content) { alert("Name and content are required."); return; }
+
+            var method = id ? "PUT" : "POST";
+            var url = ingressPath + "/api/templates" + (id ? "/" + id : "");
+            fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, target: target, position: position, content: content, enabled: true }) })
+            .then(function(r) { if(r.ok) { hideTemplateForm(); loadTemplates(); } else { r.json().then(function(d){alert(d.detail||"Error");}); } })
+            .catch(function() { alert("Network error"); });
+        }
+
+        function editTemplate(id) {
+            fetch(ingressPath + "/api/templates/" + id).then(function(r){return r.json();})
+            .then(function(t) { showTemplateForm(t); });
+        }
+
+        function toggleTemplate(id, enabled) {
+            fetch(ingressPath + "/api/templates/" + id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: enabled }) })
+            .then(function() { loadTemplates(); });
+        }
+
+        function deleteTemplate(id) {
+            if (!confirm("Delete this template?")) return;
+            fetch(ingressPath + "/api/templates/" + id, { method: "DELETE" })
+            .then(function() { loadTemplates(); });
+        }
+
+        // -- Helpers --
+        function buildValidationHtml(validation, retries) {
+            if (!validation) return "";
+            var html = '<div class="validation">';
+            html += validation.valid ? '<span class="badge badge-success">&#10003; Valid YAML</span>' : '<span class="badge badge-error">&#10007; Invalid YAML</span>';
+            for (var i = 0; i < validation.issues.length; i++) {
+                var issue = validation.issues[i];
+                var bc = issue.severity === "error" ? "badge-error" : issue.severity === "warning" ? "badge-warning" : "badge-info";
+                var icon = issue.severity === "error" ? "&#10007;" : issue.severity === "warning" ? "&#9888;" : "&#8505;";
+                html += '<div class="issue-item"><span class="badge ' + bc + '">' + icon + ' ' + escapeHtml(issue.check_name) + '</span> ' + escapeHtml(issue.message);
+                if (issue.suggestion) html += ' <span class="suggestion">' + escapeHtml(issue.suggestion) + '</span>';
+                html += '</div>';
+            }
+            return html + '</div>';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return "";
+            var div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copyYaml() {
+            var content = cmEditor ? cmEditor.getValue() : "";
+            if (!content) { var el = document.getElementById("yaml-editor"); if(el) content = el.value || el.textContent; }
+            if (!content) return;
+            navigator.clipboard.writeText(content).then(function() {
+                var btn = document.querySelector(".copy-btn");
+                if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy YAML"; }, 2000); }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+# Fixture automations with deliberate issues for review testing
+
+- id: "welcome_home"
+  alias: "Welcome Home Lights"
+  description: "Turn on living room lights when the front door opens after sunset"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.front_door_contact
+      to: "on"
+  condition:
+    - condition: sun
+      after: sunset
+  action:
+    - service: light.turn_on
+      target:
+        entity_id: light.living_room_main
+      data:
+        brightness_pct: 80
+  mode: single
+
+# Issue: time_pattern trigger (trigger_efficiency)
+- id: "temperature_check"
+  alias: "Temperature Check"
+  description: "Check temperature every 30 seconds and notify if high"
+  trigger:
+    - platform: time_pattern
+      seconds: "/30"
+  condition: []
+  action:
+    - service: notify.mobile_app
+      data:
+        message: "Temperature is high!"
+  mode: single
+
+# Issue: controls lock without conditions (security - critical)
+- id: "auto_unlock"
+  alias: "Auto Unlock Front Door"
+  description: "Unlock front door when phone connects to WiFi"
+  trigger:
+    - platform: state
+      entity_id: device_tracker.phone
+      to: "home"
+  action:
+    - service: lock.unlock
+      target:
+        entity_id: lock.front_door
+  mode: single
+
+# Issue: uses homeassistant.turn_on instead of domain-specific (deprecated_patterns)
+- id: "morning_lights"
+  alias: "Morning Lights"
+  description: "Turn on lights in the morning"
+  trigger:
+    - platform: time
+      at: "07:00:00"
+  condition: []
+  action:
+    - service: homeassistant.turn_on
+      entity_id: light.bedroom_main
+  mode: single
+
+# Issue: sun trigger with no conditions (missing_guards)
+- id: "sunset_routine"
+  alias: "Sunset Routine"
+  description: "Run sunset routine"
+  trigger:
+    - platform: sun
+      event: sunset
+  action:
+    - service: light.turn_on
+      target:
+        entity_id: light.living_room_main
+    - service: cover.close_cover
+      target:
+        entity_id: cover.living_room_blinds
+  mode: single
+
+# Clean automation (no issues)
+- id: "goodnight"
+  alias: "Goodnight"
+  description: "Turn off all lights and lock doors when pressing goodnight button"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.goodnight
+      to: "on"
+  condition:
+    - condition: time
+      after: "20:00:00"
+      before: "06:00:00"
+  action:
+    - service: light.turn_off
+      target:
+        entity_id: all
+    - service: lock.lock
+      target:
+        entity_id: lock.front_door
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.goodnight
+  mode: single

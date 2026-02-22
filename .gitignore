@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+tests/output/
+.coverage
+htmlcov/
+
+# Runtime data
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
